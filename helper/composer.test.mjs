@@ -24,11 +24,16 @@ test('composer retains drafts, submits once, and clears content only after confi
   const { Composer } = await import(`data:text/javascript;base64,${Buffer.from(`const {${Object.keys(globalThis.composerFixture).join(',')}}=globalThis.composerFixture;\n${source}`).toString('base64')}`);
   const call = async (cmd, ...args) => { calls.push([cmd, ...args]); if (cmd === 'create-start' && failStart) throw new Error('Connection interrupted'); return cmd === 'status' ? { authenticated: true, canWrite: true } : cmd === 'create-options' ? metadata : cmd === 'create-status' ? job : { jobId: 'job' }; };
   try {
-    const view = new Composer({ space: 'a', project: 'project', overlay: 'dialog' }, cx, call); await flush();
+    const view = new Composer({ space: 'a', project: 'project', overlay: 'dialog' }, cx, call);
+    view.authorize(cx); assert.equal(calls.some(([cmd]) => cmd === 'login'), false);
+    await flush();
+    assert.equal(view.authChecked, true); assert.equal(view.canWrite, true);
+    view.authorize(cx); await flush(); assert.equal(calls.some(([cmd]) => cmd === 'login'), false);
     view.inputs.title.set_value('  Example  '); view.description.set_value('Actual description');
     Object.assign(view.draft, { createMore: true, dueDate: '2026-12-01', estimate: '3', cycle: 'cycle', milestone: 'milestone', parentId: 'T-1', labels: ['label'], attachments: [{ path: '/private/example.png', name: 'example.png' }] });
     view.dismiss(); assert.equal(closed, 1);
     const reopened = new Composer({ space: 'a', project: 'project' }, cx, call); await flush();
+    reopened.authorize(cx); await flush(); assert.equal(calls.some(([cmd]) => cmd === 'login'), false);
     assert.equal(reopened.inputs.title.value(), '  Example  ');
     assert.equal(reopened.description.value(), 'Actual description');
     reopened.submit(cx); reopened.submit(cx); await flush();

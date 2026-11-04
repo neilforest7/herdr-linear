@@ -293,6 +293,8 @@ async function main() {
     const pending = loginPending(state);
     emit({ authenticated: Boolean(vault.tokens?.access_token), pending, canWrite: Boolean(vault.tokens?.access_token && String(vault.scope || vault.tokens?.scope || '').split(/\s+/).includes('write')), ...(state.error && !pending ? { error: state.error } : {}) });
   } else if (command === 'login') {
+    const vault = readVault();
+    if (arg === 'write' && vault.tokens?.access_token && String(vault.scope || vault.tokens?.scope || '').split(/\s+/).includes('write')) return emit({ ok: true, authenticated: true, canWrite: true, pending: false });
     const state = await readRuntime();
     if (loginPending(state)) return emit({ ok: true, pending: true });
     const child = spawn(process.execPath, [ownFile, '_login-worker', ...(arg === 'write' ? ['write'] : [])], { detached: true, stdio: 'ignore', cwd: dirname(dirname(ownFile)) });

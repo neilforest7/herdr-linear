@@ -53,7 +53,7 @@ export class Composer {
       try {
         const status = await this.call('status');
         if (epoch !== this.epoch) return;
-        this.canWrite = status.canWrite; this.authPending = status.pending;
+        this.canWrite = status.canWrite; this.authPending = status.pending; this.authChecked = true;
         if (!status.authenticated) { this.error = '请授权 Linear 后继续。'; return; }
         let data = await this.call('create-options', this.draft.project || '', this.draft.team || '');
         if (epoch !== this.epoch) return;
@@ -73,9 +73,9 @@ export class Composer {
   }
 
   authorize(cx) {
-    if (this.authPending) return;
+    if (!this.authChecked || this.canWrite || this.authPending) return;
     this.authPending = true; this.error = null;
-    this.work(cx, async () => { try { const data = await this.call('login', 'write'); this.authPending = data.pending; } catch (e) { this.authPending = false; throw e; } });
+    this.work(cx, async cx => { try { const data = await this.call('login', 'write'); this.authPending = data.pending; if (data.canWrite) { this.canWrite = true; this.load(cx); } } catch (e) { this.authPending = false; throw e; } });
     cx.notify();
   }
 
@@ -224,8 +224,9 @@ export class Composer {
       .child(div().text_color(t.dim).child('›')).child(div().text_size(15).child('New issue')).child(div().flex_1())
       .child(action('create-expand', this.props.expanded ? '还原' : '展开', () => { this.save(); closeOverlay(this.props.overlay); openCreate(this.props.space, this.props.project, !this.props.expanded); }, t, { icon: 'expand', quiet: true }))
       .child(action('create-close', '关闭', () => this.dismiss(), t, { icon: 'close', quiet: true })));
-    if (!this.canWrite) root.child(h_flex().gap(10).items_center().flex_wrap().p(10).rounded(6).bg(t.surface)
-      .child(div().flex_1().text_size(12).text_color(t.muted).child(this.authPending ? '请在浏览器中完成创建权限授权。' : '创建 issue 需要额外授权写入权限。'))
+    if (!this.authChecked) root.child(loading('正在检查已保存的授权…', t));
+    if (this.authChecked && !this.canWrite) root.child(h_flex().gap(10).items_center().flex_wrap().p(10).rounded(6).bg(t.surface)
+      .child(div().flex_1().text_size(12).text_color(t.muted).child(this.authPending ? '请在浏览器中完成创建权限授权。' : '首次创建需要授权写入权限，之后会自动复用。'))
       .when(!this.authPending, el => el.child(action('create-authorize', '授权创建', (_e, cx) => this.authorize(cx), t, { icon: 'external' }))));
     if (this.error) root.child(h_flex().gap(10).items_center().flex_wrap().child(div().flex_1().text_size(12).text_color(t.blocked).child(this.error))
       .when(!this.locked && !this.loading, el => el.child(action('create-reload', '重新读取属性', (_e, cx) => this.load(cx), t, { quiet: true })))
@@ -250,7 +251,7 @@ export class Composer {
       .child(this.chip('project', project?.name || '项目', null, t))
       .child(this.chip('labels', `${d.labels.length} 个标签`, d.labels.length ? h_flex().gap(4).children(d.labels.slice(0, 2).map(id => Tag(o.labels.find(x => x.id === id)?.name || '标签', t))).when(d.labels.length > 2, el => el.child(`+${d.labels.length - 2}`)) : div().child('Labels'), t))
       .child(Button.new('create-more-properties').h(30).px(10).rounded(15).bg(t.raised).text_color(t.muted).accessibility_label('更多属性').disabled(this.locked).on_click((_e, cx) => { this.more = !this.more; this.picker = null; cx.notify(); }).child('•••')));
-    const pendingText = this.submitting ? '正在保存请求…' : d.jobId ? ({ queued: '等待创建…', validating: '正在校验属性…', uploading: '正在上传附件…', creating: '正在创建 issue…' }[this.phase] || '正在确认创建结果…') : this.pickJob ? '正在选择附件…' : this.loading ? '正在读取属性…' : '';
+    const pendingText = this.submitting ? '正在保存请求…' : d.jobId ? ({ queued: '等待创建…', validating: '正在校验属性…', uploading: '正在上传附件…', creating: '正在创建 issue…' }[this.phase] || '正在确认创建结果…') : this.pickJob ? '正在选择附件…' : this.loading && this.authChecked ? '正在读取属性…' : '';
     root.child(h_flex().gap(12).items_center().flex_wrap()
       .child(Button.new('create-attachment').h(32).px(10).rounded(16).bg(t.raised).text_color(t.muted).disabled(this.locked || Boolean(this.pickJob)).accessibility_label('添加附件，也可以拖入文件').tooltip('添加附件，也可以拖入文件').on_click((_e, cx) => this.pickFiles(cx)).child(svg('mods/linear/attachment.svg').size(16)))
       .when(Boolean(pendingText), el => el.child(loading(pendingText, t))).child(div().flex_1())

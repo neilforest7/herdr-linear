@@ -24,7 +24,7 @@ Requires macOS and Node.js 22+. Your agent handles installation; you authorize L
 - **Issues at a glance.** Identifiers, status and priority icons, assignees, and colored tags. Search and filter the list.
 - **Details in place.** Read descriptions, embedded Linear images, estimates, and labels. Follow Blocked by, Blocks, Related to, Duplicate of, and parent issue links; Back or Escape returns to the previous view.
 - **Create issues.** A composer with a title, Markdown description, team, state, priority, project, colored labels, and attachments. **More** adds due date, estimate, cycle, milestone, and parent issue. **Create more** keeps the composer open for another issue.
-- **Optional write access.** Browsing uses OAuth `read` scope through Linear's official MCP server. Your first creation requests additional `write` consent; browsing works without it. Tokens stay in macOS Keychain. The visible panel refreshes every minute.
+- **Authorize once.** Browsing uses OAuth `read` scope; your first creation requests optional `write` consent. Credentials stay in macOS Keychain and are reused across new issues, spaces, and Herdr restarts. Access tokens refresh automatically; consent is needed again if authorization expires or is revoked. The visible panel refreshes every minute.
 
 ## Update
 

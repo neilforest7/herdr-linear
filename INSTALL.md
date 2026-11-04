@@ -63,6 +63,8 @@ The helper connects to [Linear's official MCP server](https://linear.app/docs/mc
 
 Initial authorization requests only `read` scope for browsing. The first attempt to create an issue requests optional additional `write` consent in the browser (`read write`). Declining leaves browsing available. Using `/mcp` does not itself grant write access.
 
+After consent, credentials are reused when reopening the composer, switching spaces, and restarting Herdr. The MCP SDK refreshes access tokens silently. Browser consent is requested again only when the saved authorization is unavailable, expired, or revoked.
+
 OAuth tokens and client registration are stored in the **Herdr Linear MCP** entry in macOS Keychain. Project bindings and skipped-space choices are stored in Herdr's shared state. Helper paths and downloaded issue images are stored under `data/linear/` in your Herdr home; creation requests and job status are stored under `data/linear/create/`. Creation requests can contain issue text and local attachment paths. The browser login status file is stored at `data/linear-auth.json` in your Herdr home.
 
 All Linear requests run on your Mac, including when you work in a remote Herdr space. If authorization expires and cannot be refreshed, open the panel and authorize again.

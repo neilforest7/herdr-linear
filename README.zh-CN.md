@@ -24,7 +24,7 @@ Read ~/.config/herdr-app/AGENTS.md, then add this mod: https://github.com/neilfo
 - **一眼看清 issues。** 编号、状态与优先级图标、负责人和彩色标签，支持搜索和筛选。
 - **面板内查看详情。** 描述、图片、估点、标签和关联关系；点击关联 issue 继续查看，返回或 Escape 回到上一层。
 - **创建 issue。** 填写标题、Markdown 描述，选择团队、状态、优先级、项目和彩色标签，添加附件。**More** 提供截止日期、估点、周期、里程碑和父 issue；**Create more** 在创建后保留表单，继续创建下一条。
-- **按需授权写入。** 浏览通过 Linear 官方 MCP 使用 OAuth `read` 权限；首次创建时请求额外的 `write` 授权，可拒绝并继续浏览。令牌保存在 macOS 钥匙串。面板显示时每分钟刷新。
+- **一次授权，持续复用。** 浏览使用 OAuth `read` 权限；首次创建时请求额外的 `write` 授权。凭据保存在 macOS 钥匙串，后续新建、切换 space、重启 Herdr 均会复用，并自动续期；授权失效或被撤销后才需重新授权。面板显示时每分钟刷新。
 
 ## 更新
 
