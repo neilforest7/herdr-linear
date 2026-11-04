@@ -1,6 +1,6 @@
 # Herdr Linear
 
-A native side panel for reading the Linear project linked to the current Herdr space. Open it from the Linear button beside the tab bar.
+A native side panel for reading the Linear project linked to the current Herdr space. Open it from the Linear button beside the tab bar. Follow [INSTALL.md](INSTALL.md) for the persistent checkout, Node helper, dependencies, and layout integration.
 
 ![Herdr Linear with demo data](preview.png)
 
