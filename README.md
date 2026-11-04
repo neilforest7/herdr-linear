@@ -2,7 +2,7 @@
 
 English · [中文](README.zh-CN.md)
 
-Linear issues beside your terminals. Bind a project to each Herdr space, then read its issues from the Linear button in the tab bar.
+Read and create Linear issues beside your terminals. Bind a project to each Herdr space, then open Linear from the tab bar.
 
 ![List and detail views of Herdr Linear](preview.png)
 
@@ -23,7 +23,8 @@ Requires macOS and Node.js 22+. Your agent handles installation; you authorize L
 - **Per-space projects.** Bind each space to a Linear project, or mark it as not needing Linear. Skipped spaces automatically collapse the panel.
 - **Issues at a glance.** Identifiers, status and priority icons, assignees, and colored tags. Search and filter the list.
 - **Details in place.** Read descriptions, embedded Linear images, estimates, and labels. Follow Blocked by, Blocks, Related to, Duplicate of, and parent issue links; Back or Escape returns to the previous view.
-- **Read-only access.** Browser OAuth through Linear's official MCP server. Credentials stay in macOS Keychain. The visible panel refreshes every minute.
+- **Create issues.** A composer with a title, Markdown description, team, state, priority, project, colored labels, and attachments. **More** adds due date, estimate, cycle, milestone, and parent issue. **Create more** keeps the composer open for another issue.
+- **Optional write access.** Browsing uses OAuth `read` scope through Linear's official MCP server. Your first creation requests additional `write` consent; browsing works without it. Tokens stay in macOS Keychain. The visible panel refreshes every minute.
 
 ## Update
 

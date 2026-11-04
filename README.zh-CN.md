@@ -2,7 +2,7 @@
 
 [English](README.md) · 中文
 
-在 Herdr 终端旁查看 Linear issues。每个 space 可绑定一个 project，点 tab bar 右侧的 Linear 即可打开。
+在 Herdr 终端旁查看和创建 Linear issues。每个 space 可绑定一个 project，点 tab bar 右侧的 Linear 即可打开。
 
 ![Herdr Linear 列表和详情预览](preview.png)
 
@@ -23,7 +23,8 @@ Read ~/.config/herdr-app/AGENTS.md, then add this mod: https://github.com/neilfo
 - **按 space 绑定项目。** 也可选择不需要 Linear，切入该 space 时面板自动收起。
 - **一眼看清 issues。** 编号、状态与优先级图标、负责人和彩色标签，支持搜索和筛选。
 - **面板内查看详情。** 描述、图片、估点、标签和关联关系；点击关联 issue 继续查看，返回或 Escape 回到上一层。
-- **只读授权。** 通过 Linear 官方 MCP 的浏览器 OAuth 授权，凭据保存在 macOS 钥匙串。面板显示时每分钟刷新。
+- **创建 issue。** 填写标题、Markdown 描述，选择团队、状态、优先级、项目和彩色标签，添加附件。**More** 提供截止日期、估点、周期、里程碑和父 issue；**Create more** 在创建后保留表单，继续创建下一条。
+- **按需授权写入。** 浏览通过 Linear 官方 MCP 使用 OAuth `read` 权限；首次创建时请求额外的 `write` 授权，可拒绝并继续浏览。令牌保存在 macOS 钥匙串。面板显示时每分钟刷新。
 
 ## 更新
 

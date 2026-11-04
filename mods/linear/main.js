@@ -3,6 +3,8 @@ import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, props, theme, layout, run, shared, setShared, exec, appHome, readTextFile, nextCommand } from "herdr";
 import { find, visibleIssues, issueURL, issueReference, webURL } from "./model.js";
 import { action, loading, issueRow, detailContent } from "./ui.js";
+import { Composer, openCreate } from "./create.js";
+import { CREATED } from "./create-model.js";
 
 const BINDINGS = "linear.projects.v1";
 const activeSpace = () => spaces().find(s => s.active);
@@ -12,6 +14,7 @@ const clock = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute:
 
 export default class Linear extends View {
   init(_props, cx) {
+    if (props()?.create) { this.composer = new Composer(props(), cx, this.call.bind(this)); return; }
     this.button = Boolean(props()?.button);
     if (this.button) {
       const enabled = shared("workspace.panels") ?? ["files", "changes"];
@@ -19,6 +22,7 @@ export default class Linear extends View {
       return;
     }
     this.epoch = 0; this.projects = []; this.issues = []; this.authenticated = null;
+    this.created = shared(CREATED)?.at;
     this.history = []; this.filter = "all";
     this.input = InputState.new({ placeholder: "搜索编号、标题、负责人" });
     this.input.on("change", (_e, cx) => cx.notify());
@@ -28,6 +32,8 @@ export default class Linear extends View {
     cx.timer.every(60000, cx => { if (visible() && !this.busy && !this.pending && !this.choosing) this.refresh(cx); });
   }
 
+  close() { this.composer?.close(); }
+
   async call(command, ...args) {
     const config = JSON.parse(await readTextFile(`${appHome()}/data/linear/config.json`) ?? "null");
     if (!config?.helper || !config.node) throw new Error("请重新安装 Linear 模块。");
@@ -35,7 +41,7 @@ export default class Linear extends View {
     let data;
     try { data = JSON.parse(result.stdout); } catch { throw new Error("Linear 连接中断，请重试。"); }
     if (data.ok === false || result.code !== 0) {
-      const error = new Error(data.error === "Linear request timed out" ? "Linear 请求超时，请重试。" : "无法读取 Linear，请重试。");
+      const error = new Error(data.error === "Linear request timed out" ? "Linear 请求超时，请重试。" : "Linear 请求失败，请重试。");
       error.authRequired = data.authRequired;
       throw error;
     }
@@ -135,6 +141,7 @@ export default class Linear extends View {
 
   render(cx) {
     const t = theme();
+    if (this.composer) return this.composer.render(cx, t);
     if (this.button) {
       const space = activeSpace()?.id;
       const disabled = shared(BINDINGS)?.[space]?.disabled === true;
@@ -152,6 +159,11 @@ export default class Linear extends View {
     }
     const space = activeSpace();
     const binding = shared(BINDINGS)?.[space?.id];
+    const created = shared(CREATED);
+    if (created?.at && created.at !== this.created) {
+      this.created = created.at;
+      if (created.space === space?.id) { this.loaded = false; later(cx, cx => { if (activeSpace()?.id === created.space) this.refresh(cx); }); }
+    }
     const showing = visible();
     if (space?.id !== this.space) {
       this.space = space?.id; ++this.epoch; this.busy = null; this.error = null;
@@ -171,6 +183,7 @@ export default class Linear extends View {
         .child(div().text_size(12).font_semibold().child(this.selected.identifier || "Issue"));
     } else header.child(svg("mods/linear/linear.svg").size(16)).child(div().font_semibold().child("Linear"));
     header.child(div().flex_1());
+    if (this.authenticated && binding?.id && !this.choosing && !this.selected) header.child(action("linear-create", "新建 issue", () => openCreate(space.id, binding.id), t, { icon: "plus" }));
     if (this.selected && issueURL(this.selected.url)) header.child(action("issue-external", "Linear", (_e, cx) => cx.open_url(issueURL(this.selected.url)), t, { icon: "external", quiet: true }));
     header.child(action("linear-close", "收起", () => run("layout.hide", { id: "panel" }), t, { quiet: true }));
     root.child(header);

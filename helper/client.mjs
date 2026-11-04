@@ -13,8 +13,12 @@ import { fileURLToPath } from 'node:url';
 import { callbackCode, nextCursor } from './callback.mjs';
 import { normalizeIssue, normalizeIssueListItem } from './issue.mjs';
 import { prepareDescription, downloadLinearImage } from './description.mjs';
+import { options as createOptions, start as createStart, status as createStatus, createWorker, chooseFiles, pickWorker } from './create.mjs';
+import { withVaultLock } from './vault-lock.mjs';
 
-const SERVER = 'https://mcp.linear.app/mcp/readonly';
+const SERVER = 'https://mcp.linear.app/mcp';
+const READONLY_SERVER = 'https://mcp.linear.app/mcp/readonly';
+const serverFor = vault => vault.discovery?.resourceMetadata?.resource === READONLY_SERVER ? READONLY_SERVER : SERVER;
 const SERVICE = 'Herdr Linear MCP';
 const ACCOUNT = 'oauth';
 const RUNTIME = join(process.env.HERDR_APP_HOME || join(homedir(), '.config/herdr-app'), 'data/linear-auth.json');
@@ -35,6 +39,11 @@ async function writeRuntime(value) {
   await rename(temp, RUNTIME);
 }
 const emit = value => process.stdout.write(`${JSON.stringify(value)}\n`);
+function loginPending(state) {
+  if (!state.pending || Date.now() - (state.startedAt || 0) >= 4 * 60_000) return false;
+  if (!state.pid) return true;
+  try { process.kill(state.pid, 0); return true; } catch (error) { return error.code !== 'ESRCH'; }
+}
 const safeError = error => {
   if (error?.name === 'TimeoutError' || error?.code === 'ETIMEDOUT') return 'Linear request timed out';
   if (error?.name === 'UnauthorizedError' || /unauthorized|invalid_grant|no access token/i.test(error?.message || '')) return 'Linear authorization required';
@@ -42,7 +51,17 @@ const safeError = error => {
 };
 
 class LinearOAuthProvider {
-  constructor(port, stored = {}) { this.port = port; this.data = stored; if (port) this.data.redirectUrl = `http://127.0.0.1:${port}/callback`; }
+  constructor(port, stored = {}, scope = 'read', staged = false) { this.port = port; this.data = { ...stored }; this.scope = scope; this.staged = staged; this.savedTokens = stored.tokens?.access_token; this.savedClient = (staged ? readVault() : stored).clientInformation?.client_id; if (port) this.data.redirectUrl = `http://127.0.0.1:${port}/callback`; }
+  async persist() {
+    if (this.staged) return;
+    await withVaultLock(() => {
+      const current = readVault();
+      if (current.tokens?.access_token !== this.savedTokens || current.clientInformation?.client_id !== this.savedClient) return;
+      writeVault(this.data);
+      this.savedTokens = this.data.tokens?.access_token;
+      this.savedClient = this.data.clientInformation?.client_id;
+    });
+  }
   get redirectUrl() { return this.data.redirectUrl; }
   get clientMetadata() {
     return {
@@ -51,25 +70,36 @@ class LinearOAuthProvider {
       token_endpoint_auth_method: 'none',
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
-      scope: 'read',
+      scope: this.scope,
     };
   }
   state() { this.data.state = randomUUID(); return this.data.state; }
   clientInformation() { return this.data.clientInformation; }
-  async saveClientInformation(value) { this.data.clientInformation = value; await writeVault(this.data); }
+  async saveClientInformation(value) { this.data.clientInformation = value; await this.persist(); }
   tokens() { return this.data.tokens; }
-  async saveTokens(value) { this.data.tokens = value; await writeVault(this.data); }
+  async saveTokens(value) {
+    this.data.tokens = value; this.data.scope = value.scope || this.scope;
+    if (this.staged) {
+      await withVaultLock(() => {
+        if (readVault().clientInformation?.client_id !== this.savedClient) throw new Error('Linear credentials changed during login');
+        writeVault(this.data);
+        this.staged = false;
+        this.savedTokens = value.access_token;
+        this.savedClient = this.data.clientInformation?.client_id;
+      });
+    } else await this.persist();
+  }
   async invalidateCredentials(scope) {
     if (scope === 'all') this.data = { redirectUrl: this.data.redirectUrl };
     else {
       const keys = { client: 'clientInformation', tokens: 'tokens', verifier: 'codeVerifier', discovery: 'discovery' };
       delete this.data[keys[scope]];
     }
-    await writeVault(this.data);
+    await this.persist();
   }
-  async saveCodeVerifier(value) { this.data.codeVerifier = value; await writeVault(this.data); }
+  async saveCodeVerifier(value) { this.data.codeVerifier = value; await this.persist(); }
   codeVerifier() { return this.data.codeVerifier; }
-  async saveDiscoveryState(value) { this.data.discovery = value; await writeVault(this.data); }
+  async saveDiscoveryState(value) { this.data.discovery = value; await this.persist(); }
   discoveryState() { return this.data.discovery; }
   async redirectToAuthorization(url) {
     if (!this.port) throw Object.assign(new Error('authorization required'), { name: 'UnauthorizedError' });
@@ -78,8 +108,8 @@ class LinearOAuthProvider {
   }
 }
 
-async function loginWorker() {
-  await writeRuntime({ pending: true, startedAt: Date.now() });
+async function loginWorker(write = false) {
+  await writeRuntime({ pending: true, startedAt: Date.now(), pid: process.pid });
   const server = createServer();
   let provider;
   let callbackTimer;
@@ -105,8 +135,9 @@ async function loginWorker() {
   callback.catch(() => {});
   try {
     await new Promise((resolve, reject) => server.listen(0, '127.0.0.1', resolve).once('error', reject));
-    provider = new LinearOAuthProvider(server.address().port, { discovery: readVault().discovery });
-    const options = { serverUrl: SERVER, scope: 'read' };
+    const scope = write ? 'read write' : 'read';
+    provider = new LinearOAuthProvider(server.address().port, {}, scope, true);
+    const options = { serverUrl: SERVER, scope };
     await auth(provider, { ...options, fetchFn: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT) }) });
     await auth(provider, { ...options, authorizationCode: await callback, fetchFn: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT) }) });
     await writeRuntime({ pending: false });
@@ -139,8 +170,8 @@ async function query(kind, projectId) {
   if (!vault.tokens?.access_token) throw Object.assign(new Error(), { name: 'UnauthorizedError' });
   const client = new Client({ name: 'herdr-linear', version: '1.0.0' });
   const controller = new AbortController();
-  const transport = new StreamableHTTPClientTransport(new URL(SERVER), {
-    authProvider: new LinearOAuthProvider(0, vault),
+  const transport = new StreamableHTTPClientTransport(new URL(serverFor(vault)), {
+    authProvider: new LinearOAuthProvider(0, vault, vault.scope || 'read'),
     requestInit: { signal: controller.signal },
     reconnectionOptions: { maxRetries: 0, initialReconnectionDelay: 100, maxReconnectionDelay: 100, reconnectionDelayGrowFactor: 1 },
   });
@@ -198,22 +229,89 @@ async function query(kind, projectId) {
   }
 }
 
+
+function safeCreateError(error) {
+  const message = error?.message || '';
+  if (/^(Invalid |Job |Team unavailable|Project |Milestone |Parent issue|Linear authorization required|list_[a-z_]+ (failed|unavailable|returned invalid data))/.test(message)) return message;
+  return safeError(error);
+}
+
+async function withCreateClient(work, timeout = 0) {
+  const vault = readVault();
+  if (!vault.tokens?.access_token) throw Object.assign(new Error('Linear authorization required'), { name: 'UnauthorizedError' });
+  const client = new Client({ name: 'herdr-linear', version: '1.0.0' });
+  const controller = new AbortController();
+  const transport = new StreamableHTTPClientTransport(new URL(serverFor(vault)), {
+    authProvider: new LinearOAuthProvider(0, vault, vault.scope || 'read'),
+    requestInit: { signal: controller.signal },
+    reconnectionOptions: { maxRetries: 0, initialReconnectionDelay: 100, maxReconnectionDelay: 100, reconnectionDelayGrowFactor: 1 },
+  });
+  let timer;
+  if (timeout) timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    await client.connect(transport);
+    const tools = (await client.listTools()).tools;
+    const call = async (name, args, listKey) => {
+      const tool = tools.find(t => t.name === name);
+      if (!tool) throw new Error(`${name} unavailable`);
+      const schema = tool.inputSchema?.properties || {};
+      let cursor;
+      const all = [];
+      for (let page = 0; page < 100; page++) {
+        const params = { ...args };
+        if (listKey && 'limit' in schema) params.limit = Math.min(50, schema.limit?.maximum || 50);
+        if (cursor) params.cursor = cursor;
+        let data;
+        try { data = resultData(await client.callTool({ name, arguments: params })); }
+        catch (error) { if (name === 'save_issue') throw error; throw new Error(`${name} failed`); }
+        if (!listKey) return data;
+        const rows = records(data, [listKey, 'nodes', 'results', 'items']);
+        if (!Array.isArray(data) && ![listKey, 'nodes', 'results', 'items'].some(key => Array.isArray(data?.[key]))) throw new Error(`${name} returned invalid data`);
+        all.push(...rows);
+        const next = nextCursor(data, 'cursor' in schema ? 'cursor' : undefined);
+        if (!next) return all;
+        if (next === cursor) throw new Error('pagination stalled');
+        cursor = next;
+      }
+      throw new Error('pagination limit exceeded');
+    };
+    return await work(call);
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+    await Promise.race([client.close().catch(() => {}), new Promise(resolve => setTimeout(resolve, 500))]);
+  }
+}
+
 async function main() {
-  const [command, arg] = process.argv.slice(2);
-  if (command === '_login-worker') return loginWorker();
+  const [command, arg, arg2] = process.argv.slice(2);
+  if (command === '_login-worker') return loginWorker(arg === 'write');
+  if (command === '_create-worker') return createWorker(arg, withCreateClient);
+  if (command === '_pick-worker') return pickWorker(arg);
   if (command === 'status') {
     const [vault, state] = await Promise.all([Promise.resolve(readVault()), readRuntime()]);
-    const pending = Boolean(state.pending && Date.now() - (state.startedAt || 0) < 4 * 60_000);
-    emit({ authenticated: Boolean(vault.tokens?.access_token), pending, ...(state.error && !pending ? { error: state.error } : {}) });
+    const pending = loginPending(state);
+    emit({ authenticated: Boolean(vault.tokens?.access_token), pending, canWrite: Boolean(vault.tokens?.access_token && String(vault.scope || vault.tokens?.scope || '').split(/\s+/).includes('write')), ...(state.error && !pending ? { error: state.error } : {}) });
   } else if (command === 'login') {
     const state = await readRuntime();
-    if (state.pending && Date.now() - (state.startedAt || 0) < 4 * 60_000) return emit({ ok: true, pending: true });
-    const child = spawn(process.execPath, [ownFile, '_login-worker'], { detached: true, stdio: 'ignore', cwd: dirname(dirname(ownFile)) });
+    if (loginPending(state)) return emit({ ok: true, pending: true });
+    const child = spawn(process.execPath, [ownFile, '_login-worker', ...(arg === 'write' ? ['write'] : [])], { detached: true, stdio: 'ignore', cwd: dirname(dirname(ownFile)) });
     child.unref();
-    await writeRuntime({ pending: true, startedAt: Date.now() });
+    await writeRuntime({ pending: true, startedAt: Date.now(), pid: child.pid });
     emit({ ok: true, pending: true });
+  } else if (command === 'create-options') {
+    try { emit(await withCreateClient(call => createOptions(call, arg || '', arg2 || ''), TIMEOUT)); }
+    catch (error) { emit({ ok: false, error: safeCreateError(error) }); }
+  } else if (command === 'create-start') {
+    const vault = readVault();
+    if (!vault.tokens?.access_token || !String(vault.scope || vault.tokens?.scope || '').split(/\s+/).includes('write')) return emit({ ok: false, error: 'Linear write authorization required', authRequired: true });
+    try { emit(await createStart(arg, ownFile)); } catch (error) { emit({ ok: false, error: safeCreateError(error) }); }
+  } else if (command === 'choose-files') {
+    try { emit(await chooseFiles(ownFile)); } catch { emit({ ok: false, error: 'File selection failed' }); }
+  } else if (command === 'create-status') {
+    try { emit(await createStatus(arg)); } catch { emit({ ok: false, error: 'Job not found' }); }
   } else if (command === 'logout') {
-    entry.deletePassword();
+    await withVaultLock(() => entry.deletePassword());
     await writeRuntime({ pending: false });
     emit({ ok: true });
   } else if (command === 'projects' || command === 'issues' || command === 'issue') {

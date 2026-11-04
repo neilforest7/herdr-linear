@@ -11,7 +11,7 @@ Read `~/.config/herdr-app/AGENTS.md` and [RECIPE.md](RECIPE.md) before changing 
 4. Run `node install.mjs`. The installer adds the button and panel to the current layout and records the helper path. If the layout lacks the required nodes, use Herdr's layout API to adapt the current custom layout, following its existing conventions.
 5. Run `herdr-app check` on the installed mod and check `herdr-app status` for errors. Open the Linear panel and leave browser authorization and project selection to the user.
 
-Linear uses the network and runs a local Node helper. OAuth credentials are stored in macOS Keychain; project bindings and downloaded images are stored in Herdr's home. Explain these accesses before installation, as Herdr's instructions require.
+Linear uses the network and runs a local Node helper. OAuth credentials are stored in macOS Keychain; project bindings, downloaded images, and creation job files are stored in Herdr's home. Selected attachments are read locally and uploaded when creating an issue. Explain these accesses before installation, as Herdr's instructions require.
 
 Keep the checkout and its dependencies available after installation. If the checkout moves, rerun the installer. Use the same `HERDR_APP_HOME` as the running Herdr window.
 
@@ -59,9 +59,11 @@ Run the installer in each layout where you want the button. Herdr updates preser
 
 ## Authorization and local data
 
-The helper connects to [Linear's official MCP server](https://linear.app/docs/mcp) at `https://mcp.linear.app/mcp/readonly`, using OAuth with PKCE and dynamic client registration. You do not need to create a Linear OAuth application or paste an API key.
+The helper connects to [Linear's official MCP server](https://linear.app/docs/mcp) at `https://mcp.linear.app/mcp`, replacing `/mcp/readonly` as the primary endpoint. OAuth uses PKCE and dynamic client registration. You do not need to create a Linear OAuth application or paste an API key.
 
-OAuth tokens and client registration are stored in the **Herdr Linear MCP** entry in macOS Keychain. Project bindings and skipped-space choices are stored in Herdr's shared state. Helper paths and downloaded issue images are stored under `data/linear/` in your Herdr home. The browser login status file is stored at `data/linear-auth.json` in your Herdr home.
+Initial authorization requests only `read` scope for browsing. The first attempt to create an issue requests optional additional `write` consent in the browser (`read write`). Declining leaves browsing available. Using `/mcp` does not itself grant write access.
+
+OAuth tokens and client registration are stored in the **Herdr Linear MCP** entry in macOS Keychain. Project bindings and skipped-space choices are stored in Herdr's shared state. Helper paths and downloaded issue images are stored under `data/linear/` in your Herdr home; creation requests and job status are stored under `data/linear/create/`. Creation requests can contain issue text and local attachment paths. The browser login status file is stored at `data/linear-auth.json` in your Herdr home.
 
 All Linear requests run on your Mac, including when you work in a remote Herdr space. If authorization expires and cannot be refreshed, open the panel and authorize again.
 
@@ -73,6 +75,10 @@ node helper/client.mjs logout
 
 This clears the Keychain entry. You can also revoke the app's access in Linear.
 
+## Create an issue
+
+Open **Create Issue** in the panel. Enter a title and Markdown description, choose a team, state, priority, project, and colored labels, and add attachments. **More** contains due date (`dueDate`), estimate, cycle, milestone, and parent issue. The composer has no assignee field. Enable **Create more** to keep it open after a successful creation.
+
 ## Development
 
 ```sh
@@ -80,7 +86,9 @@ npm test
 herdr-app check mods/linear
 ```
 
-The Node tests cover OAuth callback validation, pagination, issue data, description rendering inputs, image handling, and space auto-collapse behavior. `herdr-app check` validates the initial native view; it does not replace checking later states in the running app.
+The Node tests cover OAuth, pagination, issue data, descriptions and images, space auto-collapse, composer drafts, creation validation, uploads, and duplicate submission protection. `herdr-app check` validates the initial native view; it does not replace checking later states in the running app.
+
+Manual verification is required: start with `read` consent, browse, decline the first write request and confirm browsing still works, then approve `read write` and check creation, attachments, and **Create more** in a test workspace. These are required checks, not claims of completed consent or real-write testing.
 
 | Path | Purpose |
 | --- | --- |
