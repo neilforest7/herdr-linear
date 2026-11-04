@@ -88,4 +88,3 @@ The Node tests cover OAuth callback validation, pagination, issue data, descript
 | `helper/` | OAuth, MCP requests, issue normalization, and image handling |
 | `install.mjs` | Install the mod and connect it to a layout |
 | `RECIPE.md` | Mod structure and behavior for Herdr agents |
-
