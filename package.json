@@ -1,0 +1,26 @@
+{
+  "name": "herdr-linear",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test helper/*.test.mjs mods/linear/model.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@napi-rs/keyring": "^2.1.2"
+  },
+  "version": "0.1.0",
+  "description": "A native Linear issues panel for Herdr",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/neilforest7/herdr-linear.git"
+  },
+  "homepage": "https://github.com/neilforest7/herdr-linear",
+  "bugs": {
+    "url": "https://github.com/neilforest7/herdr-linear/issues"
+  }
+}
